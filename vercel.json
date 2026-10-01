@@ -1,0 +1,35 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/discover-jobs",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/send-digest",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/check-replies",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/suggest-followups",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "0 2 * * 0"
+    }
+  ],
+  "functions": {
+    "app/api/**": {
+      "maxDuration": 60
+    },
+    "app/api/extract/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/resumes/parse/route.ts": {
+      "maxDuration": 120
+    }
+  }
+}

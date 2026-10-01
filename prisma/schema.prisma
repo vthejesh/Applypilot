@@ -1,0 +1,499 @@
+// ApplyPilot Prisma Schema
+// PostgreSQL on Supabase or Neon
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =====================
+// AUTH (NextAuth)
+// =====================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =====================
+// USERS
+// =====================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+  resumes       Resume[]
+  jobs          Job[]
+  applications  Application[]
+  contacts      Contact[]
+  templates     Template[]
+  reminders     Reminder[]
+  notifications Notification[]
+  savedSearches SavedSearch[]
+  doNotContacts DoNotContact[]
+  scamReports   ScamReport[]
+  usageStats    UsageStat[]
+  emailLogs     EmailLog[]
+  gmailTokens   GmailToken?
+
+  @@map("users")
+}
+
+model Profile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName            String?
+  phone               String?
+  linkedinUrl         String?
+  githubUrl           String?
+  portfolioUrl        String?
+  location            String?
+  timezone            String   @default("Asia/Kolkata")
+  bio                 String?  @db.Text
+  targetRoles         String[] @default([])
+  targetLocations     String[] @default([])
+  targetSalaryMin     Int?
+  targetSalaryMax     String?  // currency flexible
+  preferRemote        Boolean  @default(false)
+  preferHybrid        Boolean  @default(true)
+  experienceLevel     String   @default("fresher") // fresher, junior, mid, senior
+  skills              String[] @default([])
+  dailySendLimit      Int      @default(10)
+  warmupMode          Boolean  @default(false)
+  warmupDay           Int      @default(0)
+  autoSend            Boolean  @default(false) // requires high confidence + within limit
+  sendWindowStart     Int      @default(9)  // hour in recruiter's TZ
+  sendWindowEnd       Int      @default(11)
+  followupDays        Int      @default(5)
+  maxFollowups        Int      @default(2)
+  duplicateWindowDays Int      @default(30)
+  emailSignature      String?  @db.Text
+  preferredTemplate   String?
+  preferredTone       String   @default("friendly")
+  onboardingDone      Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+model GmailToken {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String    @db.Text  // AES-256-GCM encrypted
+  refreshToken String    @db.Text  // AES-256-GCM encrypted
+  expiresAt    DateTime
+  gmailEmail   String
+  historyId    String?   // for Gmail push notifications
+  watchExpiry  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("gmail_tokens")
+}
+
+// =====================
+// RESUMES
+// =====================
+
+model Resume {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String          // e.g. "Frontend Resume v2"
+  roleTag      String          // Frontend, Backend, Data, Java, etc.
+  fileUrl      String          // stored in Vercel Blob or Supabase
+  fileName     String
+  fileSize     Int
+  mimeType     String
+  parsedText   String          @db.Text
+  parsedData   Json            // structured: {summary, skills, experience, education, projects}
+  atsScore     Int?            // 0-100
+  atsFeedback  Json?           // array of fix suggestions
+  isDefault    Boolean         @default(false)
+  isActive     Boolean         @default(true)
+  versions     ResumeVersion[]
+  applications Application[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([userId])
+  @@map("resumes")
+}
+
+model ResumeVersion {
+  id          String   @id @default(cuid())
+  resumeId    String
+  resume      Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  versionNum  Int
+  fileUrl     String
+  fileName    String
+  parsedText  String   @db.Text
+  parsedData  Json
+  tailoredFor String?  // job id or job title it was tailored for
+  changes     Json?    // diff of changes made
+  createdAt   DateTime @default(now())
+
+  @@index([resumeId])
+  @@map("resume_versions")
+}
+
+// =====================
+// JOBS
+// =====================
+
+model Job {
+  id               String       @id @default(cuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title            String
+  company          String
+  location         String?
+  workMode         String?      // remote, hybrid, onsite
+  jobType          String?      // full-time, part-time, contract, internship
+  experienceLevel  String?
+  salaryMin        Int?
+  salaryMax        Int?
+  salaryCurrency   String       @default("USD")
+  description      String?      @db.Text
+  requiredSkills   String[]     @default([])
+  niceToHaveSkills String[]     @default([])
+  recruiterEmail   String?
+  applyLink        String?
+  source           String       @default("manual") // manual, adzuna, jooble, remotive, arbeitnow, remoteok, extension
+  sourceJobId      String?      // external job id for dedup
+  postedAt         DateTime?
+  deadline         DateTime?
+  instructions     String?      @db.Text // "mention job ID in subject" etc.
+  rawText          String?      @db.Text // original pasted text
+  rawImageUrl      String?      // uploaded poster URL
+  matchScore       Int?         // 0-100 vs user profile
+  matchedSkills    String[]     @default([])
+  missingSkills    String[]     @default([])
+  matchReason      String?      @db.Text
+  confidence       Json?        // per-field confidence scores
+  isScam           Boolean      @default(false)
+  scamFlags        String[]     @default([])
+  status           String       @default("discovered") // discovered, saved, applied, replied, interview, offer, rejected, hidden
+  isHidden         Boolean      @default(false)
+  savedSearchId    String?
+  savedSearch      SavedSearch? @relation(fields: [savedSearchId], references: [id])
+  applications     Application[]
+  contentHash      String?      // for cache dedup
+  aiCacheId        String?      // reference to AiCache
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([company])
+  @@index([recruiterEmail])
+  @@index([source, sourceJobId])
+  @@index([contentHash])
+  @@map("jobs")
+}
+
+model SavedSearch {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  filters   Json      // role, keywords, location, workMode, experienceLevel, salary, jobType, postedWithin
+  schedule  String?   // cron expression or 'daily'
+  isActive  Boolean   @default(true)
+  lastRunAt DateTime?
+  jobs      Job[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("saved_searches")
+}
+
+// =====================
+// APPLICATIONS
+// =====================
+
+model Application {
+  id                   String       @id @default(cuid())
+  userId               String
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId                String
+  job                  Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resumeId             String?
+  resume               Resume?      @relation(fields: [resumeId], references: [id])
+  resumeVersionId      String?      // specific version used
+  templateId           String?
+  template             Template?    @relation(fields: [templateId], references: [id])
+  status               String       @default("draft") // draft, queued, sent, replied, interview, offer, rejected, bounced, error
+  emailTo              String?
+  emailSubject         String?
+  emailBody            String?      @db.Text
+  tailoredResumeParsed Json?        // the tailored resume data
+  tailoredResumeUrl    String?      // generated tailored PDF
+  subjectVariant       String?      // A/B: 'A' or 'B'
+  sentAt               DateTime?
+  gmailThreadId        String?      // for threading replies
+  gmailMessageId       String?
+  matchScore           Int?
+  coverLetterUrl       String?
+  followupCount        Int          @default(0)
+  nextFollowupAt       DateTime?
+  lastRepliedAt        DateTime?
+  replyClassification  String?      // interview_request, rejection, asking_for_details, oof, spam
+  replyDraft           String?      @db.Text
+  notes                String?      @db.Text
+  tags                 String[]     @default([])
+  emailLogs            EmailLog[]
+  reminders            Reminder[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([status])
+  @@index([gmailThreadId])
+  @@map("applications")
+}
+
+// =====================
+// EMAIL
+// =====================
+
+model EmailDraft {
+  id         String   @id @default(cuid())
+  userId     String
+  jobId      String?
+  subject    String
+  body       String   @db.Text
+  to         String
+  templateId String?
+  tone       String   @default("friendly")
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("email_drafts")
+}
+
+model EmailLog {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id])
+  type           String       // sent, bounced, replied, error, followup
+  to             String
+  subject        String
+  gmailMessageId String?
+  gmailThreadId  String?
+  status         String       // success, failure
+  errorMessage   String?      @db.Text
+  openedAt       DateTime?
+  repliedAt      DateTime?
+  bouncedAt      DateTime?
+  metadata       Json?        // extra data
+  createdAt      DateTime     @default(now())
+
+  @@index([userId])
+  @@index([applicationId])
+  @@index([gmailThreadId])
+  @@map("email_logs")
+}
+
+model Template {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  style        String        // formal, short, friendly, referral, career-switch
+  subject      String
+  body         String        @db.Text
+  tone         String        @default("friendly")
+  isDefault    Boolean       @default(false)
+  isSystem     Boolean       @default(false) // built-in templates
+  usageCount   Int           @default(0)
+  replyRate    Float         @default(0)
+  applications Application[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@map("templates")
+}
+
+// =====================
+// CONTACTS
+// =====================
+
+model Contact {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email           String
+  name            String?
+  company         String?
+  role            String?   // their role (Recruiter, HR, etc.)
+  linkedinUrl     String?
+  notes           String?   @db.Text
+  lastContactedAt DateTime?
+  contactedCount  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([company])
+  @@map("contacts")
+}
+
+model DoNotContact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String?
+  company   String?
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("do_not_contacts")
+}
+
+// =====================
+// REMINDERS & NOTIFICATIONS
+// =====================
+
+model Reminder {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+  title         String
+  body          String?
+  dueAt         DateTime
+  isDone        Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  @@index([userId])
+  @@index([applicationId])
+  @@map("reminders")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // info, success, warning, error
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// =====================
+// AI CACHE & USAGE
+// =====================
+
+model AiCache {
+  id          String    @id @default(cuid())
+  contentHash String    @unique
+  prompt      String    @db.Text
+  response    Json
+  model       String
+  tokens      Int       @default(0)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@index([contentHash])
+  @@map("ai_cache")
+}
+
+model UsageStat {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date            DateTime @default(now()) @db.Date
+  emailsSent      Int      @default(0)
+  aiTokensUsed    Int      @default(0)
+  aiCostUsd       Float    @default(0)
+  jobsFetched     Int      @default(0)
+  extractionsDone Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@map("usage_stats")
+}
+
+// =====================
+// SCAM REPORTS
+// =====================
+
+model ScamReport {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String?
+  reason    String
+  flags     String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("scam_reports")
+}

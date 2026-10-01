@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyPilot — Send Job Post to AI Assistant",
+  "version": "1.0.0",
+  "description": "Right-click any selected job post text or LinkedIn post to instantly parse and apply with ApplyPilot.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://applypilot.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ApplyPilot"
+  }
+}
