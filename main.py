@@ -39,6 +39,7 @@ def main():
             sys.stdout.write('\n'.join(results) + '\n')
     except Exception:
         pass
+        
 
 
 if __name__ == '__main__':
